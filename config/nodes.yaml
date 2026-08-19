@@ -1,0 +1,10 @@
+# Node metadata — URLs are overridden by .env at runtime
+nodes:
+  mac:
+    display_name: "Mac M2 Pro"
+    tags: [apple_silicon, mlx_friendly]
+    strengths: [low_latency]
+  hp:
+    display_name: "HP Ultra 7"
+    tags: [high_ram]
+    strengths: [large_models]

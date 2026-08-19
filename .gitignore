@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Home Lab
+data/
+.env
+dashboard/dist/
+services/api/.venv/
+services/agent/.venv/
+node_modules/

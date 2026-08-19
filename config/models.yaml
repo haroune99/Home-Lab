@@ -1,0 +1,22 @@
+models:
+  - name: hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:latest
+    preferred_node: mac
+    also_on: [hp]
+    tags: [fast, general, reasoning]
+  - name: hf.co/unsloth/AceReason-Nemotron-14B-GGUF:latest
+    preferred_node: mac
+    tags: [reasoning]
+  - name: qwen3:27b
+    preferred_node: hp
+    tags: [reasoning, large]
+
+routing:
+  auto:
+    strategy: score
+    ram_threshold_percent: 85
+    factors:
+      - model_installed
+      - ram_headroom
+      - preferred_node
+      - historical_tokens_per_sec
+    fallback: any_available
