@@ -65,6 +65,7 @@ export function InferencePage() {
           <option value="">All nodes</option>
           <option value="mac">Mac</option>
           <option value="hp">HP</option>
+          <option value="air">Air</option>
         </select>
       </div>
 

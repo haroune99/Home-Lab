@@ -4,6 +4,8 @@ from functools import lru_cache
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+NODE_IDS = ("mac", "hp", "air")
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
@@ -26,10 +28,12 @@ class Settings(BaseSettings):
     mac_ollama_url: str = "http://127.0.0.1:11434"
     hp_ollama_url: str = "http://192.168.1.100:11434"
     hp_agent_url: str = "http://192.168.1.100:8001"
+    air_llama_url: str = "http://192.168.1.143:8080"
+    air_agent_url: str = "http://192.168.1.143:8002"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     database_path: str = "./data/homelab.db"
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = "*"
     config_dir: str = "./config"
     ram_threshold_percent: int = 85
 
@@ -67,7 +71,15 @@ def get_node_urls() -> dict[str, str]:
     return {
         "mac": settings.mac_ollama_url.rstrip("/"),
         "hp": settings.hp_ollama_url.rstrip("/"),
+        "air": settings.air_llama_url.rstrip("/"),
     }
+
+
+def get_node_backend(node_id: str) -> str:
+    """Return 'ollama' or 'llamacpp'."""
+    if node_id == "air":
+        return "llamacpp"
+    return "ollama"
 
 
 def get_agent_urls() -> dict[str, str | None]:
@@ -75,4 +87,5 @@ def get_agent_urls() -> dict[str, str | None]:
     return {
         "mac": None,
         "hp": settings.hp_agent_url.rstrip("/"),
+        "air": settings.air_agent_url.rstrip("/"),
     }

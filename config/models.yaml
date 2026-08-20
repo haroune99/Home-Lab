@@ -9,6 +9,9 @@ models:
   - name: qwen3:27b
     preferred_node: hp
     tags: [reasoning, large]
+  - name: tinyllama-q4.gguf
+    preferred_node: air
+    tags: [tiny, test, legacy]
 
 routing:
   auto:

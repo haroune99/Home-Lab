@@ -64,11 +64,13 @@ class ModelInfo(BaseModel):
 class ModelsByNode(BaseModel):
     mac: list[ModelInfo] = Field(default_factory=list)
     hp: list[ModelInfo] = Field(default_factory=list)
+    air: list[ModelInfo] = Field(default_factory=list)
 
 
 class AvailableModels(BaseModel):
     mac: list[str] = Field(default_factory=list)
     hp: list[str] = Field(default_factory=list)
+    air: list[str] = Field(default_factory=list)
     all_models: list[str] = Field(default_factory=list)
 
 

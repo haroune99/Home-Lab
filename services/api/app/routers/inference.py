@@ -4,10 +4,14 @@ import time
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.config import get_node_urls
-from app.schemas import InferenceRequest, InferenceResponse, RoutingPreviewRequest, RoutingPreviewResponse
+from app.schemas import (
+    InferenceRequest,
+    InferenceResponse,
+    RoutingPreviewRequest,
+    RoutingPreviewResponse,
+)
+from app.services.inference_client import get_inference_client
 from app.services.metrics_collector import log_inference
-from app.services.ollama_client import OllamaClient
 from app.services.router import RoutingError, preview_routing, resolve_routing
 
 router = APIRouter()
@@ -27,8 +31,7 @@ async def run_inference(req: InferenceRequest):
     except RoutingError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    urls = get_node_urls()
-    client = OllamaClient(urls[selected_node])
+    client = get_inference_client(selected_node)
 
     if req.stream:
         return await _stream_inference(
@@ -47,8 +50,8 @@ async def run_inference(req: InferenceRequest):
             raise HTTPException(status_code=500, detail="Unexpected response type")
 
         latency_ms = (time.perf_counter() - start) * 1000
-        prompt_tokens = result.get("prompt_eval_count", 0)
-        completion_tokens = result.get("eval_count", 0)
+        prompt_tokens = result.get("prompt_eval_count", 0) or 0
+        completion_tokens = result.get("eval_count", 0) or 0
         tokens_per_sec = None
         if completion_tokens and latency_ms > 0:
             eval_duration_ns = result.get("eval_duration", 0)
@@ -101,7 +104,7 @@ async def run_inference(req: InferenceRequest):
 
 
 async def _stream_inference(
-    client: OllamaClient,
+    client,
     req: InferenceRequest,
     selected_node: str,
     routing_mode: str,
@@ -110,10 +113,8 @@ async def _stream_inference(
     start = time.perf_counter()
 
     async def event_generator():
-        full_response = ""
         completion_tokens = 0
         prompt_tokens = 0
-        error = None
         try:
             meta = {
                 "node": selected_node,
@@ -131,9 +132,8 @@ async def _stream_inference(
             )
             async for chunk in stream:
                 token = chunk.get("response", "")
-                full_response += token
-                completion_tokens = chunk.get("eval_count", completion_tokens)
-                prompt_tokens = chunk.get("prompt_eval_count", prompt_tokens)
+                completion_tokens = chunk.get("eval_count", completion_tokens) or completion_tokens
+                prompt_tokens = chunk.get("prompt_eval_count", prompt_tokens) or prompt_tokens
                 if token:
                     yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
                 if chunk.get("done"):
@@ -157,7 +157,7 @@ async def _stream_inference(
             )
             yield f"data: {json.dumps({'type': 'done', 'latency_ms': latency_ms, 'tokens_per_sec': tokens_per_sec, 'completion_tokens': completion_tokens})}\n\n"
         except Exception as e:
-            error = str(e)
+            error = str(e) or type(e).__name__
             latency_ms = (time.perf_counter() - start) * 1000
             await log_inference(
                 node=selected_node,

@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { api } from '../api/client';
 
-export type NodeChoice = 'mac' | 'hp' | 'auto';
+export type NodeChoice = 'mac' | 'hp' | 'air' | 'auto';
 
 export interface PlaygroundStats {
   latency_ms?: number;

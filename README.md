@@ -6,11 +6,12 @@ A private two-node local LLM home lab with a control plane API, metrics dashboar
 
 ```
 iPhone / browser ──(LAN or Tailscale)──► Mac :8000 (API + dashboard)
-                                              ├── Ollama (:11434)
-                                              └──► HP — Ollama (:11434) + Agent (:8001)
+                                              ├── mac  → Ollama
+                                              ├── hp   → Ollama
+                                              └── air  → llama-server (Wi-Fi only)
 ```
 
-Both nodes are **peer inference targets**. Route manually (pick Mac or HP + model) or use **Auto** mode and let the orchestrator score nodes by RAM headroom, preferred node, and historical tokens/sec.
+Both Ollama nodes (Mac, HP) and the Air (`llama.cpp`) are **peer inference targets**. Route manually or use **Auto**.
 
 ## Prerequisites
 
@@ -140,6 +141,54 @@ The API has **no login**. That is fine on a private Tailscale network and home L
 
 5. **Agent autostart** — see below.
 
+## MacBook Air node (llama.cpp)
+
+Old Intel MacBook Air (High Sierra) — **Wi-Fi only** (no Tailscale). Uses `llama-server`, not Ollama.
+
+### Start on the Air
+
+**Terminal 1 — llama-server:**
+
+```bash
+cd ~/Downloads/llama.cpp/build/bin
+./llama-server -m /Users/harouneaaffoute/tinyllama-q4.gguf --host 0.0.0.0 --port 8080
+```
+
+**Terminal 2 — metrics agent (CPU/RAM, same as HP):**
+
+Copy/sync the Home-Lab repo onto the Air, then:
+
+```bash
+cd /path/to/Home-Lab
+chmod +x scripts/start-agent-air.sh
+./scripts/start-agent-air.sh
+```
+
+Agent listens on **port 8002**. Set in Mac `.env`:
+
+```bash
+AIR_LLAMA_URL=http://192.168.1.143:8080
+AIR_AGENT_URL=http://192.168.1.143:8002
+```
+
+Leave both windows open. Default lab URL: `http://192.168.1.143:8080` (update `.env` if the IP changes).
+
+### Verify from Mac M2
+
+```bash
+curl http://192.168.1.143:8080/health
+curl http://192.168.1.143:8002/health
+curl http://192.168.1.143:8002/metrics
+```
+
+Then in the dashboard: Overview should show **MacBook Air (Intel)** online with RAM/CPU. Playground → node **Air** → run a short prompt.
+
+### Notes
+
+- Load GGUF models manually on the Air (dashboard pull is Mac/HP Ollama only).
+- Keep models small (3B–7B Q4) on 8GB RAM.
+- Air must stay on the same home Wi-Fi as the M2.
+
 ## HP agent autostart
 
 Registers a Startup-folder launcher (and optionally a Scheduled Task) so the metrics agent starts at logon.
@@ -236,6 +285,7 @@ data/             — SQLite DB (gitignored)
 |---|---|
 | Mac M2 Pro 16GB | Orchestrator + fast inference + phone front door |
 | HP Ultra 7 32GB | Heavy / peer inference |
+| MacBook Air Intel 8GB | Small models via llama.cpp (Wi-Fi only) |
 | iPhone | Client (Safari dashboard + Shortcuts) |
 
 See [`Claude-stategy.md`](Claude-stategy.md) for experiment ideas and content strategy.

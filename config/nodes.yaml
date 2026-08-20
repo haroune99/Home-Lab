@@ -8,3 +8,7 @@ nodes:
     display_name: "HP Ultra 7"
     tags: [high_ram]
     strengths: [large_models]
+  air:
+    display_name: "MacBook Air (Intel)"
+    tags: [legacy, llamacpp, wifi_only]
+    strengths: [small_models]

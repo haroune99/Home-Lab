@@ -1,9 +1,10 @@
-from app.config import get_settings, load_yaml_config
+from pathlib import Path
+
+from app.config import NODE_IDS, get_settings, load_yaml_config
 from app.schemas import RoutingPreviewResponse
+from app.services.inference_client import get_inference_client
 from app.services.metrics_collector import get_historical_tokens_per_sec
 from app.services.node_health import get_all_nodes
-from app.services.ollama_client import OllamaClient
-from app.config import get_node_urls
 
 
 class RoutingError(Exception):
@@ -11,13 +12,13 @@ class RoutingError(Exception):
 
 
 async def get_models_on_nodes() -> dict[str, list[str]]:
-    urls = get_node_urls()
     result: dict[str, list[str]] = {}
-    for node_id, url in urls.items():
-        client = OllamaClient(url)
+    for node_id in NODE_IDS:
+        client = get_inference_client(node_id)
         try:
             models = await client.list_models()
-            result[node_id] = sorted({m.get("name", "") for m in models if m.get("name")})
+            names = sorted({m.get("name", "") for m in models if m.get("name")})
+            result[node_id] = names
         except Exception:
             result[node_id] = []
     return result
@@ -29,8 +30,18 @@ def model_installed_on_node(
     names = installed.get(node, [])
     if model in names:
         return True
-    base = model.split(":")[0] if ":" in model else model
-    return any(n == base or n.startswith(f"{base}:") for n in names)
+    model_base = Path(model).name
+    model_stem = Path(model_base).stem.lower()
+    for n in names:
+        if n == model or Path(n).name == model_base:
+            return True
+        n_stem = Path(n).stem.lower()
+        if model_stem and (model_stem in n_stem or n_stem in model_stem):
+            return True
+        base = model.split(":")[0] if ":" in model else model
+        if n == base or n.startswith(f"{base}:"):
+            return True
+    return False
 
 
 async def resolve_routing(
@@ -39,7 +50,7 @@ async def resolve_routing(
     """
     Returns (selected_node, routing_mode, routing_reason).
     """
-    if node in ("mac", "hp"):
+    if node in NODE_IDS:
         installed = await get_models_on_nodes()
         if not model_installed_on_node(installed, node, model):
             raise RoutingError(
@@ -52,7 +63,7 @@ async def resolve_routing(
 
 
 async def preview_routing(model: str, node: str) -> RoutingPreviewResponse:
-    if node in ("mac", "hp"):
+    if node in NODE_IDS:
         installed = await get_models_on_nodes()
         available = model_installed_on_node(installed, node, model)
         return RoutingPreviewResponse(
@@ -91,7 +102,11 @@ async def auto_route(model: str) -> tuple[str, str, str]:
 
     preferred_node: str | None = None
     for entry in models_config.get("models", []):
-        if entry.get("name") == model or entry.get("name", "").split(":")[0] == model.split(":")[0]:
+        entry_name = entry.get("name", "")
+        if entry_name == model or entry_name.split(":")[0] == model.split(":")[0]:
+            preferred_node = entry.get("preferred_node")
+            break
+        if Path(entry_name).stem.lower() in Path(model).stem.lower():
             preferred_node = entry.get("preferred_node")
             break
 
@@ -100,19 +115,20 @@ async def auto_route(model: str) -> tuple[str, str, str]:
     node_status_map = {n.id: n for n in nodes_status}
 
     candidates: list[str] = []
-    for node_id in ("mac", "hp"):
+    for node_id in NODE_IDS:
         status = node_status_map.get(node_id)
         if not status or not status.online:
             continue
         if not model_installed_on_node(installed, node_id, model):
             continue
         ram_pct = status.ram_used_percent or 0
-        if ram_pct > ram_threshold:
+        # Air has no remote RAM metrics — don't exclude on missing RAM
+        if status.ram_used_percent is not None and ram_pct > ram_threshold:
             continue
         candidates.append(node_id)
 
     if not candidates:
-        for node_id in ("mac", "hp"):
+        for node_id in NODE_IDS:
             status = node_status_map.get(node_id)
             if status and status.online and model_installed_on_node(installed, node_id, model):
                 candidates.append(node_id)
@@ -120,7 +136,8 @@ async def auto_route(model: str) -> tuple[str, str, str]:
     if not candidates:
         raise RoutingError(
             f"No available node has model '{model}' installed. "
-            f"Mac: {installed.get('mac', [])}, HP: {installed.get('hp', [])}"
+            f"Mac: {installed.get('mac', [])}, HP: {installed.get('hp', [])}, "
+            f"Air: {installed.get('air', [])}"
         )
 
     if len(candidates) == 1:
@@ -140,6 +157,11 @@ async def auto_route(model: str) -> tuple[str, str, str]:
         if preferred_node == node_id:
             score += 10
             reasons[node_id].append("preferred_node")
+
+        # Prefer mac/hp over air for equal models unless preferred
+        if node_id == "air":
+            score -= 2
+            reasons[node_id].append("legacy_node")
 
         if status.ram_used_percent is not None:
             headroom = max(0, 100 - status.ram_used_percent) / 20

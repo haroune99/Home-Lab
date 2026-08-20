@@ -37,6 +37,7 @@ export function PlaygroundPage() {
     if (!available) return [];
     if (node === 'mac') return available.mac;
     if (node === 'hp') return available.hp;
+    if (node === 'air') return available.air;
     return available.all_models;
   }, [available, node]);
 
@@ -45,6 +46,11 @@ export function PlaygroundPage() {
       setModel(modelOptions[0]);
     }
   }, [modelOptions, model, setModel]);
+
+  const shortModelLabel = (name: string) => {
+    if (name.includes('/')) return name.split('/').pop() || name;
+    return name;
+  };
 
   return (
     <div>
@@ -63,6 +69,7 @@ export function PlaygroundPage() {
               <option value="auto">Auto (orchestrator)</option>
               <option value="mac">Mac M2 Pro</option>
               <option value="hp">HP Ultra 7</option>
+              <option value="air">MacBook Air (Intel)</option>
             </select>
           </div>
 
@@ -76,7 +83,7 @@ export function PlaygroundPage() {
             >
               {modelOptions.map((m) => (
                 <option key={m} value={m}>
-                  {m}
+                  {shortModelLabel(m)}
                 </option>
               ))}
             </select>

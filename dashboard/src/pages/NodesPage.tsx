@@ -53,7 +53,7 @@ export function NodesPage() {
     <div>
       <h2 className="mb-6 text-2xl font-bold">Nodes</h2>
 
-      <div className="mb-8 grid gap-4 md:grid-cols-2">
+      <div className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {nodes?.map((node) => (
           <NodeCard key={node.id} node={node} />
         ))}

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import httpx
 import psutil
 
@@ -22,6 +24,22 @@ async def ollama_loaded_model() -> str | None:
             models = resp.json().get("models", [])
             if models:
                 return models[0].get("name")
+    except Exception:
+        pass
+    return await llama_loaded_model()
+
+
+async def llama_loaded_model() -> str | None:
+    if not settings.llama_url:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{settings.llama_url.rstrip('/')}/v1/models")
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            if data:
+                mid = data[0].get("id", "")
+                return Path(mid).name if mid else None
     except Exception:
         pass
     return None

@@ -40,11 +40,13 @@ export interface ModelInfo {
 export interface ModelsByNode {
   mac: ModelInfo[];
   hp: ModelInfo[];
+  air: ModelInfo[];
 }
 
 export interface AvailableModels {
   mac: string[];
   hp: string[];
+  air: string[];
   all_models: string[];
 }
 

@@ -1,17 +1,16 @@
-import time
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 import psutil
 
-from app.config import get_agent_urls, get_node_urls, load_yaml_config
+from app.config import NODE_IDS, get_agent_urls, get_node_backend, get_node_urls, load_yaml_config
 from app.db import db
 from app.schemas import NodeStatus
-from app.services.ollama_client import OllamaClient
+from app.services.inference_client import get_inference_client
 
 
-async def fetch_hp_agent_metrics(agent_url: str) -> dict[str, Any] | None:
+async def fetch_agent_metrics(agent_url: str) -> dict[str, Any] | None:
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{agent_url}/metrics")
@@ -36,14 +35,12 @@ async def get_node_status(node_id: str) -> NodeStatus:
     node_meta = nodes_config.get(node_id, {})
     display_name = node_meta.get("display_name", node_id.upper())
 
-    urls = get_node_urls()
     agent_urls = get_agent_urls()
-    ollama_url = urls.get(node_id, "")
     agent_url = agent_urls.get(node_id)
 
-    client = OllamaClient(ollama_url)
+    client = get_inference_client(node_id)
     online, latency_ms, error = await client.ping()
-    ollama_version = await client.version() if online else None
+    backend_version = await client.version() if online else None
     loaded_models = await client.ps() if online else []
     loaded_model = loaded_models[0]["name"] if loaded_models else None
 
@@ -60,7 +57,7 @@ async def get_node_status(node_id: str) -> NodeStatus:
         ram_total_mb = metrics["ram_total_mb"]
         ram_used_percent = metrics["ram_used_percent"]
     elif agent_url:
-        agent_metrics = await fetch_hp_agent_metrics(agent_url)
+        agent_metrics = await fetch_agent_metrics(agent_url)
         if agent_metrics:
             agent_online = True
             cpu_percent = agent_metrics.get("cpu_percent")
@@ -71,6 +68,15 @@ async def get_node_status(node_id: str) -> NodeStatus:
                 loaded_model = agent_metrics.get("ollama_loaded_model")
         else:
             agent_online = False
+
+    # Shorten long GGUF paths for display
+    if loaded_model and "/" in loaded_model:
+        loaded_model = loaded_model.rsplit("/", 1)[-1]
+
+    backend = get_node_backend(node_id)
+    version_label = backend_version
+    if backend == "llamacpp" and online:
+        version_label = "llamacpp"
 
     return NodeStatus(
         id=node_id,
@@ -83,14 +89,14 @@ async def get_node_status(node_id: str) -> NodeStatus:
         ram_used_mb=ram_used_mb,
         ram_total_mb=ram_total_mb,
         ram_used_percent=ram_used_percent,
-        ollama_version=ollama_version,
+        ollama_version=version_label,
         ollama_loaded_model=loaded_model,
         error=error,
     )
 
 
 async def get_all_nodes() -> list[NodeStatus]:
-    return [await get_node_status("mac"), await get_node_status("hp")]
+    return [await get_node_status(n) for n in NODE_IDS]
 
 
 async def snapshot_all_nodes() -> None:
