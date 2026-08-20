@@ -1,10 +1,12 @@
-# Home Lab HP Agent - headless runner for Task Scheduler
+# Home Lab HP Agent - headless runner for Task Scheduler / Startup
 # Usage:
-#   .\scripts\run-agent.ps1          # start agent (foreground)
-#   .\scripts\run-agent.ps1 -Setup   # create venv + install deps, then exit
+#   .\scripts\run-agent.ps1
+#   .\scripts\run-agent.ps1 -Setup
+#   .\scripts\run-agent.ps1 -StartupDelaySeconds 60
 
 param(
-    [switch]$Setup
+    [switch]$Setup,
+    [int]$StartupDelaySeconds = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,7 +60,6 @@ if ($Setup -or -not (Test-Path $VenvPython)) {
 }
 
 if ($Setup) {
-    # Installer calls -Setup only; do not start the server here
     exit 0
 }
 
@@ -67,9 +68,14 @@ if (-not (Test-Path $VenvPython)) {
     exit 1
 }
 
+if ($StartupDelaySeconds -gt 0) {
+    Write-Log "Waiting $StartupDelaySeconds seconds for Ollama to start..."
+    Start-Sleep -Seconds $StartupDelaySeconds
+}
+
 Write-Log "Starting Home Lab Agent on http://0.0.0.0:8001 (root=$Root)"
 
-# Native stderr (uvicorn INFO lines) must not be treated as terminating errors
+# Native stderr (uvicorn INFO) must not be treated as terminating errors
 $ErrorActionPreference = "Continue"
 & $VenvPython -m uvicorn app.main:app --host 0.0.0.0 --port 8001 *>> $LogFile
 $exitCode = $LASTEXITCODE

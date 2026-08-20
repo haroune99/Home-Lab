@@ -97,12 +97,16 @@ Registers a Windows Scheduled Task (`HomeLab-Agent`) that starts the metrics age
 
 ### One-time install (on HP)
 
-1. Open **PowerShell** in the Home-Lab repo folder on the HP.
+1. Open **PowerShell** in the Home-Lab repo folder on the HP (normal user is fine — admin not required).
 2. Run:
 
 ```powershell
 .\scripts\install-agent-task.ps1 -Setup
 ```
+
+This installs:
+- A **Startup folder** launcher (primary — no admin)
+- A **Scheduled Task** if Windows allows it (optional bonus)
 
 If the repo is elsewhere:
 
@@ -110,7 +114,7 @@ If the repo is elsewhere:
 .\scripts\install-agent-task.ps1 -RepoPath "C:\Users\YourName\Home-Lab" -Setup
 ```
 
-Optional: change the post-logon delay (default 60 seconds):
+Optional: change the post-logon delay (default 60 seconds, waits inside the agent script so Ollama can start first):
 
 ```powershell
 .\scripts\install-agent-task.ps1 -DelaySeconds 90 -Setup
@@ -119,7 +123,8 @@ Optional: change the post-logon delay (default 60 seconds):
 ### Verify
 
 ```powershell
-Start-ScheduledTask -TaskName 'HomeLab-Agent'
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-agent.ps1
+# In another PowerShell window:
 curl http://127.0.0.1:8001/health
 Get-Content $env:LOCALAPPDATA\HomeLab\logs\agent.log -Tail 20
 ```
@@ -142,14 +147,13 @@ Reboot the HP, wait ~2 minutes, then check Overview — HP should show online wi
 
 If the installer script fails:
 
-1. Open **Task Scheduler** → Create Task.
-2. **General:** name `HomeLab-Agent`, run only when user is logged on.
-3. **Triggers:** At log on → Delay 1 minute.
-4. **Actions:** Start a program
-   - Program: `powershell.exe`
-   - Arguments: `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\path\to\Home-Lab\scripts\run-agent.ps1"`
-   - Start in: `C:\path\to\Home-Lab`
-5. **Settings:** Restart every 1 minute, up to 3 times; allow on battery.
+1. Press Win+R → `shell:startup` → Enter.
+2. Create `HomeLab-Agent.cmd` with:
+   ```bat
+   @echo off
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\path\to\Home-Lab\scripts\run-agent.ps1" -StartupDelaySeconds 60
+   ```
+3. Or use **Task Scheduler** → Create Task (At log on) pointing at the same `run-agent.ps1`.
 
 Also confirm **Ollama** is enabled under Settings → Apps → Startup.
 
