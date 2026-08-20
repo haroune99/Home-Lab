@@ -14,4 +14,4 @@ if (-not $existing) {
 Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 Write-Host "Removed scheduled task '$TaskName'."
-Write-Host "Note: a running agent process may still be active — end it via Task Manager if needed."
+Write-Host "Note: a running agent process may still be active - end it via Task Manager if needed."

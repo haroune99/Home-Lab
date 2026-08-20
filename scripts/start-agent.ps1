@@ -1,4 +1,4 @@
-# Home Lab HP Agent — interactive / manual startup
+# Home Lab HP Agent - interactive / manual startup
 # For boot autostart use: .\scripts\install-agent-task.ps1
 # Headless runner:        .\scripts\run-agent.ps1
 
