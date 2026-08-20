@@ -2,10 +2,12 @@
 # Usage:
 #   .\scripts\run-agent.ps1
 #   .\scripts\run-agent.ps1 -Setup
+#   .\scripts\run-agent.ps1 -Setup -Force   # recreate venv
 #   .\scripts\run-agent.ps1 -StartupDelaySeconds 60
 
 param(
     [switch]$Setup,
+    [switch]$Force,
     [int]$StartupDelaySeconds = 0
 )
 
@@ -39,24 +41,32 @@ if (-not (Test-Path $AgentDir)) {
 
 Set-Location $AgentDir
 
-if ($Setup -or -not (Test-Path $VenvPython)) {
-    Write-Log "Setting up venv in $AgentDir"
-    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-    if (-not $pythonCmd) {
-        Write-Log "ERROR: python not found on PATH"
-        exit 1
+$needsSetup = $Setup -or -not (Test-Path $VenvPython)
+if ($needsSetup) {
+    if ((Test-Path $VenvPython) -and -not $Force) {
+        Write-Log "Venv already exists - skipping install (use -Force to recreate)"
+    } else {
+        Write-Log "Setting up venv in $AgentDir"
+        $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $pythonCmd) {
+            Write-Log "ERROR: python not found on PATH"
+            exit 1
+        }
+        if ($Force -and (Test-Path ".venv")) {
+            Remove-Item -Recurse -Force ".venv"
+        }
+        & python -m venv .venv
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "ERROR: venv creation failed"
+            exit 1
+        }
+        & $VenvPython -m pip install -q -e .
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "ERROR: pip install failed"
+            exit 1
+        }
+        Write-Log "Setup complete"
     }
-    & python -m venv .venv
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "ERROR: venv creation failed"
-        exit 1
-    }
-    & $VenvPython -m pip install -q -e .
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "ERROR: pip install failed"
-        exit 1
-    }
-    Write-Log "Setup complete"
 }
 
 if ($Setup) {
@@ -75,7 +85,6 @@ if ($StartupDelaySeconds -gt 0) {
 
 Write-Log "Starting Home Lab Agent on http://0.0.0.0:8001 (root=$Root)"
 
-# Native stderr (uvicorn INFO) must not be treated as terminating errors
 $ErrorActionPreference = "Continue"
 & $VenvPython -m uvicorn app.main:app --host 0.0.0.0 --port 8001 *>> $LogFile
 $exitCode = $LASTEXITCODE

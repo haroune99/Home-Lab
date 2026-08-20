@@ -1,9 +1,9 @@
 # Install Home Lab agent autostart on Windows (no admin required).
-# Prefers a Startup-folder launcher; also tries a current-user Scheduled Task.
+# Uses Startup folder (primary). Scheduled Task is optional.
 #
 # Usage:
 #   .\scripts\install-agent-task.ps1 -Setup
-#   .\scripts\install-agent-task.ps1 -RepoPath "C:\Users\You\Home-Lab" -DelaySeconds 60 -Setup
+#   .\scripts\install-agent-task.ps1 -RepoPath "C:\Users\You\Home-Lab" -DelaySeconds 60
 
 param(
     [string]$RepoPath = "",
@@ -27,7 +27,7 @@ if (-not (Test-Path $RunScript)) {
 }
 
 if ($Setup) {
-    Write-Host "Running agent setup..."
+    Write-Host "Running agent setup (skips if venv already exists)..."
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $RunScript -Setup
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Setup failed (exit $LASTEXITCODE)"
@@ -40,7 +40,7 @@ if (-not (Test-Path $venvPython)) {
     Write-Host "WARNING: venv not found. Re-run with -Setup."
 }
 
-# --- 1) Startup folder launcher (works without admin) ---
+# Startup folder launcher (no admin)
 $StartupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
 if (-not (Test-Path $StartupDir)) {
     New-Item -ItemType Directory -Path $StartupDir -Force | Out-Null
@@ -55,34 +55,31 @@ Set-Content -Path $StartupCmd -Value $cmdContent -Encoding ASCII
 Write-Host "Installed Startup launcher:"
 Write-Host "  $StartupCmd"
 
-# --- 2) Optional: current-user Scheduled Task via schtasks (no admin) ---
+# Optional Scheduled Task - never fail the install if this fails
 $taskOk = $false
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 $tr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$RunScript`" -StartupDelaySeconds $DelaySeconds"
-
-# Remove old task if present (ignore errors)
-schtasks /Delete /TN $TaskName /F 2>$null | Out-Null
-
-$create = schtasks /Create /TN $TaskName /SC ONLOGON /RL LIMITED /F /TR $tr 2>&1
+cmd /c "schtasks /Delete /TN $TaskName /F >nul 2>&1"
+$createOut = cmd /c "schtasks /Create /TN $TaskName /SC ONLOGON /RL LIMITED /F /TR `"$tr`" 2>&1"
 if ($LASTEXITCODE -eq 0) {
     $taskOk = $true
     Write-Host "Installed Scheduled Task '$TaskName' (ONLOGON)."
 } else {
-    Write-Host "Scheduled Task skipped (not required). Startup folder is enough."
-    Write-Host "  ($create)"
+    Write-Host "Scheduled Task skipped (Startup folder is enough)."
 }
+$ErrorActionPreference = $prevEap
 
 Write-Host ""
 Write-Host "Autostart configured."
 Write-Host "  Repo:   $RepoPath"
-Write-Host "  Delay:  ${DelaySeconds}s (inside run-agent.ps1, so Ollama can start first)"
+Write-Host "  Delay:  ${DelaySeconds}s after login"
 Write-Host ""
-Write-Host "Test now (starts agent in background via Startup cmd style):"
+Write-Host "Test agent now:"
 Write-Host "  powershell -NoProfile -ExecutionPolicy Bypass -File `"$RunScript`""
 Write-Host "  curl http://127.0.0.1:8001/health"
-Write-Host "  Get-Content `$env:LOCALAPPDATA\HomeLab\logs\agent.log -Tail 20"
-if ($taskOk) {
-    Write-Host "  Start-ScheduledTask -TaskName '$TaskName'"
-}
 Write-Host ""
-Write-Host "Uninstall:"
-Write-Host "  .\scripts\uninstall-agent-task.ps1"
+Write-Host "Uninstall: .\scripts\uninstall-agent-task.ps1"
+if ($taskOk) {
+    Write-Host "Or start task: Start-ScheduledTask -TaskName '$TaskName'"
+}
