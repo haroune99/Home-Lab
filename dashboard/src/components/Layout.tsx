@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { usePlaygroundLoading } from '../context/PlaygroundContext';
 
 const links = [
   { to: '/', label: 'Overview' },
@@ -9,6 +10,8 @@ const links = [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const playgroundLoading = usePlaygroundLoading();
+
   return (
     <div className="flex min-h-screen">
       <aside className="w-56 shrink-0 border-r border-zinc-800 bg-zinc-900/50 p-4">
@@ -22,14 +25,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
               to={l.to}
               end={l.to === '/'}
               className={({ isActive }) =>
-                `block rounded-lg px-3 py-2 text-sm transition-colors ${
+                `flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
                   isActive
                     ? 'bg-sky-500/20 text-sky-300'
                     : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
                 }`
               }
             >
-              {l.label}
+              <span>{l.label}</span>
+              {l.to === '/playground' && playgroundLoading && (
+                <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" title="Inference running" />
+              )}
             </NavLink>
           ))}
         </nav>

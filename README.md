@@ -42,9 +42,20 @@ Docs: http://localhost:8000/docs
 
 ### 3. Start agent (HP — PowerShell)
 
+Manual (dev):
+
 ```powershell
 .\scripts\start-agent.ps1
 ```
+
+Autostart at Windows logon (recommended):
+
+```powershell
+# From the Home-Lab repo on the HP — run once
+.\scripts\install-agent-task.ps1 -Setup
+```
+
+See [HP agent autostart](#hp-agent-autostart) below.
 
 ### 4. Start dashboard (Mac)
 
@@ -77,6 +88,70 @@ Or pull from the **Models** page in the dashboard.
    ```
 
 4. **Fixed IP recommended** — assign a static LAN IP to the HP so `.env` doesn't break.
+
+5. **Agent autostart** — see below so the HP stays online after reboot.
+
+## HP agent autostart
+
+Registers a Windows Scheduled Task (`HomeLab-Agent`) that starts the metrics agent at logon (with a delay so Ollama can come up first).
+
+### One-time install (on HP)
+
+1. Open **PowerShell** in the Home-Lab repo folder on the HP.
+2. Run:
+
+```powershell
+.\scripts\install-agent-task.ps1 -Setup
+```
+
+If the repo is elsewhere:
+
+```powershell
+.\scripts\install-agent-task.ps1 -RepoPath "C:\Users\YourName\Home-Lab" -Setup
+```
+
+Optional: change the post-logon delay (default 60 seconds):
+
+```powershell
+.\scripts\install-agent-task.ps1 -DelaySeconds 90 -Setup
+```
+
+### Verify
+
+```powershell
+Start-ScheduledTask -TaskName 'HomeLab-Agent'
+curl http://127.0.0.1:8001/health
+Get-Content $env:LOCALAPPDATA\HomeLab\logs\agent.log -Tail 20
+```
+
+From the **Mac**:
+
+```bash
+curl http://<hp-ip>:8001/health
+```
+
+Reboot the HP, wait ~2 minutes, then check Overview — HP should show online without opening PowerShell.
+
+### Uninstall
+
+```powershell
+.\scripts\uninstall-agent-task.ps1
+```
+
+### Manual Task Scheduler (GUI fallback)
+
+If the installer script fails:
+
+1. Open **Task Scheduler** → Create Task.
+2. **General:** name `HomeLab-Agent`, run only when user is logged on.
+3. **Triggers:** At log on → Delay 1 minute.
+4. **Actions:** Start a program
+   - Program: `powershell.exe`
+   - Arguments: `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\path\to\Home-Lab\scripts\run-agent.ps1"`
+   - Start in: `C:\path\to\Home-Lab`
+5. **Settings:** Restart every 1 minute, up to 3 times; allow on battery.
+
+Also confirm **Ollama** is enabled under Settings → Apps → Startup.
 
 ## Dashboard pages
 
@@ -122,7 +197,8 @@ config/           — nodes.yaml, models.yaml
 services/api/     — FastAPI control plane (Mac)
 services/agent/   — HP metrics sidecar
 dashboard/        — React + Vite dashboard
-scripts/          — start-api.sh, start-agent.ps1, pull-models.sh
+scripts/          — start-api.sh, start-agent.ps1, run-agent.ps1,
+                    install-agent-task.ps1, uninstall-agent-task.ps1, pull-models.sh
 data/             — SQLite DB (gitignored)
 ```
 
@@ -136,6 +212,7 @@ Once both nodes show green in Overview and Playground runs inference successfull
 
 ## Optional next steps
 
+- **HP agent autostart** — [done above](#hp-agent-autostart)
 - **Tailscale** — access lab from phone away from home
 - **iOS Shortcuts** — POST to `http://<mac-ip>:8000/api/v1/inference`
 - **Serve dashboard in prod** — `cd dashboard && npm run build`, then serve `dist/` from FastAPI

@@ -1,21 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-
-type NodeChoice = 'mac' | 'hp' | 'auto';
+import { usePlayground, type NodeChoice } from '../context/PlaygroundContext';
 
 export function PlaygroundPage() {
-  const [node, setNode] = useState<NodeChoice>('auto');
-  const [model, setModel] = useState('');
-  const [prompt, setPrompt] = useState('Explain what a home lab is in one sentence.');
-  const [response, setResponse] = useState('');
-  const [routingReason, setRoutingReason] = useState<string | null>(null);
-  const [routingNode, setRoutingNode] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<{ latency_ms?: number; tokens_per_sec?: number } | null>(
-    null,
-  );
-  const [error, setError] = useState<string | null>(null);
+  const {
+    node,
+    model,
+    prompt,
+    response,
+    routingReason,
+    routingNode,
+    loading,
+    stats,
+    error,
+    setNode,
+    setModel,
+    setPrompt,
+    runInference,
+    clearSession,
+  } = usePlayground();
 
   const { data: nodes } = useQuery({
     queryKey: ['nodes'],
@@ -40,49 +44,7 @@ export function PlaygroundPage() {
     if (modelOptions.length && !modelOptions.includes(model)) {
       setModel(modelOptions[0]);
     }
-  }, [modelOptions, model]);
-
-  useEffect(() => {
-    if (node === 'auto' && model) {
-      api.routingPreview(model, 'auto').then((p) => {
-        setRoutingReason(p.routing_reason);
-        setRoutingNode(p.node);
-      });
-    } else {
-      setRoutingReason(null);
-      setRoutingNode(node === 'auto' ? null : node);
-    }
-  }, [node, model]);
-
-  const runStream = async () => {
-    setLoading(true);
-    setResponse('');
-    setStats(null);
-    setError(null);
-    setRoutingReason(null);
-
-    try {
-      await api.inferenceStream({ model, prompt, node }, (event) => {
-        if (event.type === 'meta') {
-          setRoutingNode(event.node as string);
-          setRoutingReason(event.routing_reason as string);
-        } else if (event.type === 'token') {
-          setResponse((r) => r + (event.token as string));
-        } else if (event.type === 'done') {
-          setStats({
-            latency_ms: event.latency_ms as number,
-            tokens_per_sec: event.tokens_per_sec as number,
-          });
-        } else if (event.type === 'error') {
-          setError(event.error as string);
-        }
-      });
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [modelOptions, model, setModel]);
 
   return (
     <div>
@@ -96,6 +58,7 @@ export function PlaygroundPage() {
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
               value={node}
               onChange={(e) => setNode(e.target.value as NodeChoice)}
+              disabled={loading}
             >
               <option value="auto">Auto (orchestrator)</option>
               <option value="mac">Mac M2 Pro</option>
@@ -109,6 +72,7 @@ export function PlaygroundPage() {
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
               value={model}
               onChange={(e) => setModel(e.target.value)}
+              disabled={loading}
             >
               {modelOptions.map((m) => (
                 <option key={m} value={m}>
@@ -124,6 +88,12 @@ export function PlaygroundPage() {
                 {node === 'auto' ? 'Auto route' : 'Manual'} → <strong>{routingNode}</strong>
               </p>
               {routingReason && <p className="mt-1 text-zinc-400">{routingReason}</p>}
+            </div>
+          )}
+
+          {loading && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+              Inference running on <strong>{routingNode ?? node}</strong> — safe to switch tabs
             </div>
           )}
 
@@ -143,19 +113,30 @@ export function PlaygroundPage() {
           <div>
             <label className="mb-1 block text-xs text-zinc-500">Prompt</label>
             <textarea
-              className="h-32 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
+              className="h-32 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm disabled:opacity-60"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              disabled={loading}
             />
           </div>
 
-          <button
-            className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-            disabled={loading || !model || !prompt}
-            onClick={runStream}
-          >
-            {loading ? 'Running…' : 'Run inference'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+              disabled={loading || !model || !prompt}
+              onClick={() => runInference()}
+            >
+              {loading ? 'Running…' : 'Run inference'}
+            </button>
+            {(response || stats || error) && !loading && (
+              <button
+                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+                onClick={clearSession}
+              >
+                Clear
+              </button>
+            )}
+          </div>
 
           {error && <p className="text-sm text-red-400">{error}</p>}
 
@@ -169,7 +150,7 @@ export function PlaygroundPage() {
           <div>
             <label className="mb-1 block text-xs text-zinc-500">Response</label>
             <div className="min-h-[200px] whitespace-pre-wrap rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-sm">
-              {response || (loading ? '…' : 'Response will appear here')}
+              {response || (loading ? 'Generating…' : 'Response will appear here')}
             </div>
           </div>
         </div>
