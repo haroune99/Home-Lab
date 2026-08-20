@@ -1,7 +1,7 @@
 # Home Lab HP Agent - headless runner for Task Scheduler
 # Usage:
-#   .\scripts\run-agent.ps1
-#   .\scripts\run-agent.ps1 -Setup   # create venv + install deps first
+#   .\scripts\run-agent.ps1          # start agent (foreground)
+#   .\scripts\run-agent.ps1 -Setup   # create venv + install deps, then exit
 
 param(
     [switch]$Setup
@@ -57,6 +57,11 @@ if ($Setup -or -not (Test-Path $VenvPython)) {
     Write-Log "Setup complete"
 }
 
+if ($Setup) {
+    # Installer calls -Setup only; do not start the server here
+    exit 0
+}
+
 if (-not (Test-Path $VenvPython)) {
     Write-Log "ERROR: venv python missing at $VenvPython - run with -Setup"
     exit 1
@@ -64,9 +69,12 @@ if (-not (Test-Path $VenvPython)) {
 
 Write-Log "Starting Home Lab Agent on http://0.0.0.0:8001 (root=$Root)"
 
-# Redirect stdout/stderr into the log file while keeping the process in foreground
-# (required for Task Scheduler keep-running behavior)
+# Native stderr (uvicorn INFO lines) must not be treated as terminating errors
+$ErrorActionPreference = "Continue"
 & $VenvPython -m uvicorn app.main:app --host 0.0.0.0 --port 8001 *>> $LogFile
 $exitCode = $LASTEXITCODE
+if ($null -eq $exitCode) { $exitCode = 0 }
+
+$ErrorActionPreference = "Stop"
 Write-Log "Agent exited with code $exitCode"
 exit $exitCode
